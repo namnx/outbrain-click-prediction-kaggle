@@ -1,17 +1,12 @@
 # coding: utf-8
 
 import os
-
+from itertools import combinations
 import pandas as pd
 import numpy as np
-import xgboost as xgb
 import feather
 from tqdm import tqdm
-
 from sklearn.preprocessing import LabelEncoder
-
-from itertools import combinations
-
 
 
 df_all = feather.read_dataframe('tmp/clicks_train_50_50.feather')
@@ -24,12 +19,10 @@ df_test = feather.read_dataframe('tmp/clicks_test.feather')
 # - user
 # - platform
 
-
-df_display = pd.read_csv('../data/events.csv')
-df_display.geo_location.fillna('', inplace=1)
+df_display = pd.read_csv('data/events.csv.zip')
+df_display.geo_location.fillna('', inplace=True)
 
 # geo features
-
 df_geo = df_display.geo_location.str.split('>', expand=True)
 df_geo.fillna('*', inplace=1)
 df_geo.columns = ['geo_0', 'geo_1', 'geo_2']
@@ -43,7 +36,6 @@ df_display.rename(columns={'geo_location': 'geo_2'}, inplace=1)
 del df_geo
 
 # time features
-
 ts = (df_display.timestamp + 1465876799998) / 1000 - (4 * 60 * 60)
 df_display.timestamp = pd.to_datetime(ts, unit='s')
 
@@ -54,7 +46,6 @@ df_display['hour'] = dt.hour.astype('str')
 del df_display['timestamp'], dt, ts
 
 # platform
-
 df_display.platform = df_display.platform.astype('str')
 del df_display['display_id']
 
@@ -77,77 +68,58 @@ df_display['user_id'] = df_display['user_id'].apply(base32)
 # - top topic
 # - meta: publisher, source
 
-df_ads = pd.read_csv('../data/promoted_content.csv')
+df_ads = pd.read_csv('data/promoted_content.csv.zip')
 ad_to_idx = dict(zip(df_ads.ad_id, df_ads.index))
-
 ads_docs = set(df_display.document_id)
 ads_docs.update(df_ads.document_id)
 
 
 # document categories
-
-df_doc_cat = pd.read_csv('../data/documents_categories.csv')
-
+df_doc_cat = pd.read_csv('data/documents_categories.csv.zip')
 df_doc_cat = df_doc_cat.drop_duplicates(subset='document_id', keep='first')
 df_doc_cat = df_doc_cat[df_doc_cat.confidence_level >= 0.8]
 df_doc_cat = df_doc_cat[df_doc_cat.document_id.isin(ads_docs)]
 
 cat_counts = df_doc_cat.category_id.value_counts()
 freq_cats = set(cat_counts[cat_counts >= 5].index)
-
 df_doc_cat = df_doc_cat[df_doc_cat.category_id.isin(freq_cats)]
-
 doc_top_cat = dict(zip(df_doc_cat.document_id, df_doc_cat.category_id))
 del freq_cats, cat_counts, df_doc_cat
 
 
 # document entities: hash them to occupy less space
-
 D = 2 ** 24
 def entity_name_reduce(entity):
     return '%x' % abs(hash(entity) % D)
 
 
-df_doc_entities = pd.read_csv('../data/documents_entities.csv')
-
+df_doc_entities = pd.read_csv('data/documents_entities.csv.zip')
 df_doc_entities = df_doc_entities[df_doc_entities.confidence_level >= 0.8]
 df_doc_entities = df_doc_entities[df_doc_entities.document_id.isin(ads_docs)]
-
 df_doc_entities = df_doc_entities.drop_duplicates(subset='document_id', keep='first')
 df_doc_entities = df_doc_entities.reset_index(drop=1)
-
 df_doc_entities.entity_id = df_doc_entities.entity_id.apply(entity_name_reduce)
-
 entity_counts = df_doc_entities.entity_id.value_counts()
 freq_entites = set(entity_counts[entity_counts >= 5].index)
 df_doc_entities = df_doc_entities[df_doc_entities.entity_id.isin(freq_entites)]
-
 doc_top_entity = dict(zip(df_doc_entities.document_id, df_doc_entities.entity_id))
-
 del df_doc_entities, entity_counts, freq_entites
 
 
 # document topics
-
 df_doc_topics = pd.read_csv('../data/documents_topics.csv')
-
 df_doc_topics = df_doc_topics[df_doc_topics.confidence_level >= 0.8]
 df_doc_topics = df_doc_topics[df_doc_topics.document_id.isin(ads_docs)]
-
 df_doc_topics = df_doc_topics.drop_duplicates(subset='document_id', keep='first')
 df_doc_topics = df_doc_topics.reset_index(drop=1)
-
 topic_cnt = df_doc_topics.topic_id.value_counts()
 freq_topics = set(topic_cnt[topic_cnt >= 5].index)
-
 df_doc_topics = df_doc_topics[df_doc_topics.topic_id.isin(freq_topics)]
 doc_top_topic = dict(zip(df_doc_topics.document_id, df_doc_topics.topic_id))
-
 del df_doc_topics, topic_cnt, freq_topics
 
 
 # document meta info
-
 df_doc_meta = pd.read_csv('../data/documents_meta.csv')
 df_doc_meta = df_doc_meta[df_doc_meta.document_id.isin(ads_docs)]
 del df_doc_meta['publish_time']
@@ -162,9 +134,7 @@ df_doc_meta = df_doc_meta.reset_index(drop=1)
 meta_idx = dict(zip(df_doc_meta.document_id, df_doc_meta.index))
 
 
-
 # to avoid confusion, let's rename document_id columns
-
 df_display.rename(columns={'document_id': 'on_document_id'}, inplace=1)
 df_ads.rename(columns={'document_id': 'ad_document_id'}, inplace=1)
 
@@ -255,22 +225,16 @@ def chunk_dataframe(df, n):
 
 
 # apply to train
-
 df = feather.read_dataframe('tmp/clicks_train_50_50.feather')
-
 delete_file_if_exists('tmp/categorical_joined_train.csv')
-
 for batch in tqdm(chunk_dataframe(df, n=100000)):
     batch = prepare_batch(batch)
     append_to_csv(batch, 'tmp/categorical_joined_train.csv')
 
 
 # apply to test
-
 df = feather.read_dataframe('tmp/clicks_test.feather')
-
 delete_file_if_exists('tmp/categorical_joined_test.csv')
-
 for batch in tqdm(chunk_dataframe(df, n=100000)):
     batch = prepare_batch(batch)
     append_to_csv(batch, 'tmp/categorical_joined_test.csv')

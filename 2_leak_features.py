@@ -1,13 +1,12 @@
 # coding: utf-8
 
-import feather
 import sys
-
 import csv
-csv.field_size_limit(sys.maxsize)
-
 import pandas as pd
 import numpy as np
+import feather
+csv.field_size_limit(sys.maxsize)
+
 
 # reading the leaked documents
 
@@ -25,16 +24,14 @@ with open("tmp/leaked_docs.csv") as f:
         docs_size[doc_id] = len(uuids)
 
 
-# 
-
 df_all = feather.read_dataframe('tmp/clicks_train_50_50.feather')
 df_test = feather.read_dataframe('tmp/clicks_test.feather')
 
 
 # getting user ids and document ids
 
-df_events = pd.read_csv('../data/events.csv', usecols=['uuid'])
-df_ads = pd.read_csv('../data/promoted_content.csv', 
+df_events = pd.read_csv('data/events.csv.zip', usecols=['uuid'])
+df_ads = pd.read_csv('data/promoted_content.csv.zip',
                      usecols=['ad_id', 'document_id'])
 
 # joining doc_id and ad_id
@@ -48,6 +45,7 @@ df_all['ad_document_id'] = ad_document_id
 ad_idx = df_test.ad_id.apply(ad_to_idx.get)
 ad_document_id = df_ads.document_id.iloc[ad_idx].reset_index(drop=1)
 df_test['ad_document_id'] = ad_document_id
+
 
 # joining display_id and user
 

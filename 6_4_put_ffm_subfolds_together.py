@@ -1,5 +1,6 @@
-import feather
 import numpy as np
+import pandas as pd
+import feather
 
 
 df_all = feather.read_dataframe('tmp/clicks_train_50_50.feather')

@@ -1,7 +1,6 @@
 # run with pypy
-
-from tqdm import tqdm
 import csv
+from tqdm import tqdm
 
 train_file = 'tmp/categorical_joined_train.csv'
 test_file = 'tmp/categorical_joined_test.csv'

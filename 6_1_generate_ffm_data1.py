@@ -1,4 +1,3 @@
-import gc
 import numpy as np
 import pandas as pd
 from tqdm import tqdm
@@ -111,38 +110,6 @@ def ffm_feature_string(display_id, ad_id, leaves, label=None):
     else:
         return str(label) + ' ' + result
 
-
-# generating the data for train
-print('+ Generating the data for train...')
-
-df_all = feather.read_dataframe('tmp/clicks_train_50_50.feather')
-leaves_0 = np.load('tmp/xgb_model_0_leaves.npy')
-leaves_1 = np.load('tmp/xgb_model_1_leaves.npy')
-
-f_0 = open('ffm/ffm_xgb_0.txt', 'w')
-f_1 = open('ffm/ffm_xgb_1.txt', 'w')
-cnt_0 = 0
-cnt_1 = 0
-
-for row in tqdm(df_all.itertuples()):
-    display_id = row.display_id
-    ad_id = row.ad_id
-    fold = row.fold
-    label = row.clicked
-
-    if fold == 0:
-        row = ffm_feature_string(display_id, ad_id, leaves_0[cnt_0], label)
-        f_0.write(row + '\n')
-        cnt_0 = cnt_0 + 1
-    else:
-        row = ffm_feature_string(display_id, ad_id, leaves_1[cnt_1], label)
-        f_1.write(row + '\n')
-        cnt_1 = cnt_1 + 1
-
-f_0.close()
-f_1.close()
-del df_all, leaves_0, leaves_1
-gc.collect()
 
 
 # generating the data for test

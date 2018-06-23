@@ -1,9 +1,27 @@
 import os
-
+import sys
+import gc
 import pandas as pd
 import numpy as np
 import xgboost as xgb
+import feather
 
+
+features = list(pd.read_csv('categorical_features.txt', header=None)[0])
+
+# checking mtv features data
+'''
+print('Checking mtv features data...')
+ok = True
+for f in features:
+    for name in ['0', '1', 'test', 'rank_0', 'rank_1', 'rank_test']:
+        filename = 'features/mtv/%s_pred_%s.npy' % (f, name)
+        if not os.path.isfile(filename):
+            print('  + Missing %s!' % filename)
+            ok = False
+
+if not ok: sys.exit(1)
+'''
 
 df_all = feather.read_dataframe('tmp/clicks_train_50_50.feather')
 df_test = feather.read_dataframe('tmp/clicks_test.feather')
@@ -11,9 +29,7 @@ df_test = feather.read_dataframe('tmp/clicks_test.feather')
 df_train_0 = df_all[df_all.fold == 0].reset_index(drop=1)
 df_train_1 = df_all[df_all.fold == 1].reset_index(drop=1)
 del df_train_0['fold'], df_train_1['fold'], df_all
-
-features = list(pd.read_csv('categorical_features.txt', header=None)[0])
-
+gc.collect()
 
 # training a small model to select best features
 # first, load the data
@@ -21,14 +37,14 @@ features = list(pd.read_csv('categorical_features.txt', header=None)[0])
 
 df_train = df_train_0[:2000000].copy()
 df_val = df_train_1[:1000000].copy()
-del df_train_0, df_train_1
+
 
 for f in features:
     print('loading data for %s...' % f)
-    pred_0 = 'features/mte/%s_pred_0.npy' % f
-    pred_1 = 'features/mte/%s_pred_1.npy' % f
-    rank_0 = 'features/mte/%s_pred_rank_0.npy' % f
-    rank_1 = 'features/mte/%s_pred_rank_1.npy' % f
+    pred_0 = 'features/mtv/%s_pred_0.npy' % f
+    pred_1 = 'features/mtv/%s_pred_1.npy' % f
+    rank_0 = 'features/mtv/%s_pred_rank_0.npy' % f
+    rank_1 = 'features/mtv/%s_pred_rank_1.npy' % f
 
     df_train[f] = np.load(pred_0)[:2000000]
     df_val[f] = np.load(pred_1)[:1000000]
@@ -51,6 +67,7 @@ dval = xgb.DMatrix(X_v, y_v, feature_names=columns)
 
 watchlist = [(dtrain, 'train'), (dval, 'val')]
 del X_t, X_v, y_t, y_v
+gc.collect()
 
 
 # train a small model and save only important feautures
@@ -74,15 +91,12 @@ xgb_pars = {
     'silent': 1
 }
 
-model = xgb.train(xgb_pars, dtrain, num_boost_round=20, verbose_eval=1, 
-    evals=watchlist)
-
+model = xgb.train(xgb_pars, dtrain, num_boost_round=20, verbose_eval=1, evals=watchlist)
 scores = model.get_score(importance_type='gain')
 useful_features = [f for (f, s) in scores.items() if s >= 50.0]
 
 
 # now let's put everything together in a data frame and save the result
-
 for f in useful_features:
     if '_rank' in f:
         base_name = f[:-5]  + '_pred_rank'
@@ -95,11 +109,9 @@ for f in useful_features:
 
 
 # also add the doc features
-
-df_train_0_doc = feather.load_dataframe('features/docs_df_train_0.feather')
-df_train_1_doc = feather.load_dataframe('features/docs_df_train_1.feather')
-df_test_doc = feather.load_dataframe('features/docs_df_test.feather')
-
+df_train_0_doc = feather.read_dataframe('features/docs_df_train_0.feather')
+df_train_1_doc = feather.read_dataframe('features/docs_df_train_1.feather')
+df_test_doc = feather.read_dataframe('features/docs_df_test.feather')
 doc_features = ['doc_idf_dot', 'doc_idf_dot_lsa', 'doc_idf_cos',
                 'doc_idf_dot_rank', 'doc_idf_dot_lsa_rank', 'doc_idf_cos_rank']
 
@@ -108,14 +120,16 @@ for f in doc_features:
     df_train_1[f] = df_train_1_doc[f]
     df_test[f] = df_test_doc[f]
 
+del df_train_0_doc, df_train_1_doc, df_test_doc
+gc.collect()
+
 
 df_train_0['doc_known_views'] = np.load('features/doc_known_views_0.npy')
 df_train_1['doc_known_views'] = np.load('features/doc_known_views_1.npy')
-df_test['doc_known_views'] = np.load('features/doc_known_views_test.npy)
+df_test['doc_known_views'] = np.load('features/doc_known_views_test.npy')
 
 
 # now save evertyhing
-
 feather.write_dataframe(df_train_0, 'tmp/mtv_df_train_0.feather')
 feather.write_dataframe(df_train_1, 'tmp/mtv_df_train_1.feather')
 feather.write_dataframe(df_test, 'tmp/mtv_df_test.feather')
